@@ -12,7 +12,8 @@ import net.minecraft.network.chat.Component;
 
 /**
  * Right-Shift hub. Lists installed Doodly modules and opens their Cloth config.
- * Does not force modules to load — only shows what Fabric reports as present.
+ * 1.21.11: do NOT call renderBackground() and super.render() both —
+ * that double-blurs and throws "Can only blur once per frame".
  */
 public final class DoodlyClickGui extends Screen
 {
@@ -22,7 +23,7 @@ public final class DoodlyClickGui extends Screen
 	{
 		final String title;
 		final String modId;
-		final Class<?> configClass; // null if unknown
+		final Class<?> configClass;
 		final boolean loaded;
 		
 		ModuleRow(String title, String modId, Class<?> configClass, boolean loaded)
@@ -43,28 +44,26 @@ public final class DoodlyClickGui extends Screen
 	protected void init()
 	{
 		rows.clear();
-		FabricLoader fl = FabricLoader.getInstance();
 		
 		rows.add(row("Player Awareness", "doodly_player_awareness",
 			"net.doodly.playeresp.PlayerEspConfig"));
-		rows.add(row("Chest / Storage ESP", "doodly_utils",
-			"net.wimods.chestesp.ChestEspConfig"));
-		// chestesp may still use id chestesp on older builds
-		if(!rows.get(rows.size() - 1).loaded)
-			rows.set(rows.size() - 1, row("Chest / Storage ESP", "chestesp",
-				"net.wimods.chestesp.ChestEspConfig"));
+		ModuleRow chest = row("Chest / Storage ESP", "doodly_utils",
+			"net.wimods.chestesp.ChestEspConfig");
+		if(!chest.loaded)
+			chest = row("Chest / Storage ESP", "chestesp",
+				"net.wimods.chestesp.ChestEspConfig");
+		rows.add(chest);
 		rows.add(row("Base Scan (light + storage)", "doodly_base_scan",
 			"net.doodly.basefinder.BaseFinderConfig"));
 		rows.add(row("FreeCam", "wi_freecam", null));
 		
-		int y = 40;
+		int y = 48;
 		for(ModuleRow r : rows)
 		{
 			String label = r.title + (r.loaded ? "  [loaded]" : "  [not installed]");
-			int yy = y;
 			ModuleRow ref = r;
 			addRenderableWidget(Button.builder(Component.literal(label), b -> openConfig(ref))
-				.bounds(this.width / 2 - 120, yy, 240, 20)
+				.bounds(this.width / 2 - 120, y, 240, 20)
 				.build());
 			y += 24;
 		}
@@ -88,13 +87,8 @@ public final class DoodlyClickGui extends Screen
 	
 	private void openConfig(ModuleRow r)
 	{
-		if(!r.loaded)
+		if(!r.loaded || r.configClass == null || minecraft == null)
 			return;
-		if(r.configClass == null)
-		{
-			// FreeCam / no cloth — nothing to open
-			return;
-		}
 		try
 		{
 			@SuppressWarnings("unchecked")
@@ -102,19 +96,19 @@ public final class DoodlyClickGui extends Screen
 				(Class<? extends me.shedaniel.autoconfig.ConfigData>) r.configClass;
 			minecraft.setScreen(AutoConfig.getConfigScreen(c, this).get());
 		}
-		catch(Throwable t)
-		{
-			// class present but AutoConfig not registered yet
-		}
+		catch(Throwable ignored) {}
 	}
 	
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float delta)
 	{
-		renderBackground(g, mouseX, mouseY, delta);
-		g.drawCenteredString(this.font, "Doodly Client — modules", this.width / 2, 15, 0xFFFFFF);
-		g.drawCenteredString(this.font, "Right Shift toggles this menu", this.width / 2, 28, 0xAAAAAA);
+		// single background path only — super.render already draws the blur once
 		super.render(g, mouseX, mouseY, delta);
+		
+		g.drawCenteredString(this.font, "Doodly Client — modules",
+			this.width / 2, 12, 0xFFFFFF);
+		g.drawCenteredString(this.font, "Right Shift toggles this menu",
+			this.width / 2, 26, 0xAAAAAA);
 	}
 	
 	@Override
