@@ -120,7 +120,7 @@ public final class Tracker
 			
 			String name = p.getName().getString();
 			if(name == null || name.isBlank())
-				name = p.getName().getString();
+				name = p.getUUID().toString();
 			String lower = name.toLowerCase(Locale.ROOT);
 			if(hide.contains(lower)) continue;
 			if(!focus.isEmpty() && !focus.contains(lower)) continue;

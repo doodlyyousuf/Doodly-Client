@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "doodly_core",
+  "version": "${version}",
+  "name": "Doodly Core",
+  "description": "Unified ClickGUI for Doodly modules (Right Shift).",
+  "authors": ["doodly"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["net.doodly.core.DoodlyCoreClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.17.3",
+    "fabric-api": "*",
+    "minecraft": "~1.21.11",
+    "java": ">=21"
+  }
+}
