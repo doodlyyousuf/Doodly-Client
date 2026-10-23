@@ -1,15 +1,13 @@
 /*
  * Copyright (c) 2023-2026 Wurst-Imperium and contributors.
- *
- * This source code is subject to the terms of the GNU General Public
- * License, version 3. If a copy of the GPL was not distributed with this
- * file, You can obtain one at: https://www.gnu.org/licenses/gpl-3.0.txt
+ * Extended: PlayerESP + PacketIntel integration.
  */
 package net.wimods.chestesp;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import org.slf4j.Logger;
@@ -48,10 +46,18 @@ public final class ChestEspMod
 	private final PlausibleAnalytics plausible;
 	private final ChestEspGroupManager groups;
 	private final ChestEspHud hud = new ChestEspHud();
+	private final PlayerEsp playerEsp = new PlayerEsp();
+	private final PacketIntel packetIntel = new PacketIntel();
+	private final BaseCluster baseCluster = new BaseCluster();
+	
 	private final KeyMapping toggleKey;
 	private final KeyMapping toggleFillKey;
 	private final KeyMapping toggleLabelsKey;
 	private final KeyMapping cycleStyleKey;
+	private final KeyMapping togglePlayerEspKey;
+	private final KeyMapping togglePacketIntelKey;
+	private final KeyMapping dumpIntelKey;
+	
 	private final Set<Long> seenKeys = new HashSet<>();
 	private final Set<Long> openedKeys = new HashSet<>();
 	
@@ -60,15 +66,17 @@ public final class ChestEspMod
 	
 	public ChestEspMod()
 	{
-		LOGGER.info("Starting ChestESP...");
+		LOGGER.info("Starting ChestESP + PlayerESP + PacketIntel...");
 		
 		configHolder = AutoConfig.register(ChestEspConfig.class,
 			GsonConfigSerializer::new);
 		
 		groups = new ChestEspGroupManager(configHolder);
+		packetIntel.setPlayerEspHook(playerEsp);
 		
 		KeyMapping.Category kbCategory = KeyMapping.Category
 			.register(Identifier.fromNamespaceAndPath("chestesp", "chestesp"));
+		
 		toggleKey = KeyBindingHelper.registerKeyBinding(
 			new KeyMapping("key.chestesp.toggle", InputConstants.Type.KEYSYM,
 				InputConstants.UNKNOWN.getValue(), kbCategory, 0));
@@ -82,13 +90,28 @@ public final class ChestEspMod
 		cycleStyleKey = KeyBindingHelper.registerKeyBinding(
 			new KeyMapping("key.chestesp.cycle_style", InputConstants.Type.KEYSYM,
 				InputConstants.UNKNOWN.getValue(), kbCategory, 0));
+		togglePlayerEspKey = KeyBindingHelper.registerKeyBinding(
+			new KeyMapping("key.chestesp.toggle_player_esp",
+				InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(),
+				kbCategory, 0));
+		togglePacketIntelKey = KeyBindingHelper.registerKeyBinding(
+			new KeyMapping("key.chestesp.toggle_packet_intel",
+				InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(),
+				kbCategory, 0));
+		dumpIntelKey = KeyBindingHelper.registerKeyBinding(
+			new KeyMapping("key.chestesp.dump_packet_intel",
+				InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(),
+				kbCategory, 0));
 		
-		ClientTickEvents.END_CLIENT_TICK.register(client -> handleKeys());
+		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			handleKeys();
+			if(client.level != null)
+				playerEsp.tick(configHolder.getConfig());
+		});
 		
 		ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> {
 			if(!isEnabled())
 				return;
-			
 			chunk.getBlockEntities().values().forEach(
 				be -> groups.blockGroups.forEach(group -> group.addIfMatches(be)));
 		});
@@ -96,7 +119,13 @@ public final class ChestEspMod
 		ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> {
 			seenKeys.clear();
 			openedKeys.clear();
+			playerEsp.clear();
+			packetIntel.clear();
+			baseCluster.clear();
 			hud.setLine("");
+			hud.setPlayerLine("");
+			hud.setIntelLine("");
+			hud.setIntelLog(List.of());
 		});
 		
 		UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
@@ -137,6 +166,21 @@ public final class ChestEspMod
 			ChestEspStyle[] values = ChestEspStyle.values();
 			config.style = values[(config.style.ordinal() + 1) % values.length];
 			changed = true;
+		}
+		while(togglePlayerEspKey.consumeClick())
+		{
+			config.player_esp_enable = !config.player_esp_enable;
+			changed = true;
+		}
+		while(togglePacketIntelKey.consumeClick())
+		{
+			config.packet_intel_enable = !config.packet_intel_enable;
+			changed = true;
+		}
+		while(dumpIntelKey.consumeClick())
+		{
+			if(config.packet_intel_enable)
+				packetIntel.dumpToFile();
 		}
 		
 		if(changed)
@@ -199,6 +243,7 @@ public final class ChestEspMod
 		
 		groups.entityGroups.forEach(group -> group.updateBoxes(0));
 		notifyNewTargets();
+		baseCluster.rebuild(groups, configHolder.getConfig());
 	}
 	
 	private void notifyNewTargets()
@@ -227,163 +272,207 @@ public final class ChestEspMod
 		return enabled && configHolder.getConfig().style.hasLines();
 	}
 	
+	/**
+	 * Called every frame from WorldRendererMixin.
+	 * Container ESP only runs when enabled; PlayerESP/PacketIntel are independent.
+	 */
 	public void onRender(PoseStack matrixStack, float partialTicks)
 	{
 		ChestEspConfig config = configHolder.getConfig();
+		
 		if(config.hide_when_gui_open && MC.screen != null)
 		{
 			hud.setLine("");
+			hud.setPlayerLine("");
+			hud.setIntelLine("");
+			hud.setIntelLog(List.of());
 			return;
 		}
 		
-		groups.entityGroups.stream().filter(ChestEspGroup::isEnabled)
-			.forEach(g -> g.updateBoxes(partialTicks));
-		
-		ChestEspStyle style = config.style;
-		boolean depthTest = !config.through_walls;
-		
-		ArrayList<AABB> fillBoxes = new ArrayList<>();
-		ArrayList<Integer> fillColors = new ArrayList<>();
-		ArrayList<AABB> outlineBoxes = new ArrayList<>();
-		ArrayList<Integer> outlineColors = new ArrayList<>();
-		ArrayList<Vec3> tracerEnds = new ArrayList<>();
-		ArrayList<Integer> tracerColors = new ArrayList<>();
-		ArrayList<Label> labels = new ArrayList<>();
-		
-		Vec3 cam = RenderUtils.getCameraPos();
-		double maxDist = config.max_distance;
-		boolean fill = config.fill_boxes;
-		boolean outline = config.outline_boxes;
-		if(!fill && !outline)
-			outline = true;
-		
-		int fillBase = Math.round(config.fill_opacity * 255 / 100F);
-		int lineBase = Math.round(config.outline_opacity * 255 / 100F);
-		
-		ChestEspTarget nearest = null;
-		double nearestDist = Double.MAX_VALUE;
-		int visible = 0;
-		
-		record Candidate(ChestEspGroup group, ChestEspTarget target, double dist,
-			boolean opened)
-		{}
-		ArrayList<Candidate> candidates = new ArrayList<>();
-		
-		for(ChestEspGroup group : groups.allGroups)
+		// ----- Container ESP -----
+		if(enabled)
 		{
-			if(!group.isEnabled())
-				continue;
+			groups.entityGroups.stream().filter(ChestEspGroup::isEnabled)
+				.forEach(g -> g.updateBoxes(partialTicks));
 			
-			for(ChestEspTarget target : group.getTargets())
+			ChestEspStyle style = config.style;
+			boolean depthTest = !config.through_walls;
+			
+			ArrayList<AABB> fillBoxes = new ArrayList<>();
+			ArrayList<Integer> fillColors = new ArrayList<>();
+			ArrayList<AABB> outlineBoxes = new ArrayList<>();
+			ArrayList<Integer> outlineColors = new ArrayList<>();
+			ArrayList<Vec3> tracerEnds = new ArrayList<>();
+			ArrayList<Integer> tracerColors = new ArrayList<>();
+			ArrayList<Label> labels = new ArrayList<>();
+			
+			Vec3 cam = RenderUtils.getCameraPos();
+			double maxDist = config.max_distance;
+			boolean fill = config.fill_boxes;
+			boolean outline = config.outline_boxes;
+			if(!fill && !outline)
+				outline = true;
+			
+			int fillBase = Math.round(config.fill_opacity * 255 / 100F);
+			int lineBase = Math.round(config.outline_opacity * 255 / 100F);
+			
+			ChestEspTarget nearest = null;
+			double nearestDist = Double.MAX_VALUE;
+			int visible = 0;
+			
+			record Candidate(ChestEspGroup group, ChestEspTarget target, double dist,
+				boolean opened)
+			{}
+			ArrayList<Candidate> candidates = new ArrayList<>();
+			
+			for(ChestEspGroup group : groups.allGroups)
 			{
-				Vec3 center = target.center();
-				double dist = cam.distanceTo(center);
-				if(dist > maxDist)
-					continue;
-				if(center.y < config.min_y || center.y > config.max_y)
+				if(!group.isEnabled())
 					continue;
 				
-				boolean opened = openedKeys.contains(target.key);
-				if(config.hide_opened && opened)
-					continue;
-				
-				candidates.add(new Candidate(group, target, dist, opened));
-				visible++;
-				if(dist < nearestDist)
+				for(ChestEspTarget target : group.getTargets())
 				{
-					nearestDist = dist;
-					nearest = target;
+					if(!target.passes(config))
+						continue;
+					
+					Vec3 center = target.center();
+					double dist = cam.distanceTo(center);
+					if(dist > maxDist)
+						continue;
+					if(center.y < config.min_y || center.y > config.max_y)
+						continue;
+					
+					boolean opened = openedKeys.contains(target.key);
+					if(config.hide_opened && opened)
+						continue;
+					
+					candidates.add(new Candidate(group, target, dist, opened));
+					visible++;
+					if(dist < nearestDist)
+					{
+						nearestDist = dist;
+						nearest = target;
+					}
 				}
 			}
-		}
-		
-		for(Candidate c : candidates)
-		{
-			ChestEspTarget target = c.target;
-			int rgb = c.opened ? config.opened_color
-				: ChestEspTarget.chromaRgb(c.group.getColorI(0) & 0xFFFFFF, config,
-					c.dist);
-			boolean isNearest =
-				config.highlight_nearest && nearest != null && target == nearest;
-			int fillA = ChestEspTarget.fadeAlpha(fillBase, c.dist, maxDist,
-				config.fade_by_distance);
-			int lineA = ChestEspTarget.fadeAlpha(lineBase, c.dist, maxDist,
-				config.fade_by_distance);
-			if(isNearest)
+			
+			for(Candidate c : candidates)
 			{
-				fillA = Math.min(255, fillA + 40);
-				lineA = 255;
+				ChestEspTarget target = c.target;
+				int rgb = c.opened ? config.opened_color
+					: ChestEspTarget.chromaRgb(c.group.getColorI(0) & 0xFFFFFF, config,
+						c.dist);
+				boolean isNearest =
+					config.highlight_nearest && nearest != null && target == nearest;
+				int fillA = ChestEspTarget.fadeAlpha(fillBase, c.dist, maxDist,
+					config.fade_by_distance);
+				int lineA = ChestEspTarget.fadeAlpha(lineBase, c.dist, maxDist,
+					config.fade_by_distance);
+				if(isNearest)
+				{
+					fillA = Math.min(255, fillA + 40);
+					lineA = 255;
+				}
+				
+				if(style.hasBoxes())
+				{
+					if(fill)
+					{
+						fillBoxes.add(target.box);
+						fillColors.add(rgbWithAlpha(rgb, fillA));
+					}
+					if(outline)
+					{
+						outlineBoxes.add(target.box);
+						outlineColors.add(rgbWithAlpha(rgb, lineA));
+					}
+				}
+				
+				boolean drawTracer = style.hasLines()
+					&& (!config.tracers_nearest_only || isNearest);
+				if(drawTracer)
+				{
+					tracerEnds.add(target.center());
+					tracerColors.add(rgbWithAlpha(rgb, lineA));
+				}
+				
+				if(config.show_labels && c.dist <= config.label_max_distance)
+					labels.add(new Label(
+						target.center().add(0, target.box.getYsize() * 0.5 + 0.2, 0),
+						target.displayText(c.dist, config), rgbWithAlpha(rgb, lineA),
+						c.dist));
 			}
+			
+			labels.sort(Comparator.comparingDouble(l -> l.dist));
+			if(labels.size() > config.max_labels)
+				labels.subList(config.max_labels, labels.size()).clear();
 			
 			if(style.hasBoxes())
 			{
 				if(fill)
-				{
-					fillBoxes.add(target.box);
-					fillColors.add(rgbWithAlpha(rgb, fillA));
-				}
+					RenderUtils.drawSolidBoxes(matrixStack, fillBoxes, fillColors,
+						depthTest);
 				if(outline)
+					RenderUtils.drawOutlinedBoxes(matrixStack, outlineBoxes,
+						outlineColors, depthTest);
+			}
+			
+			if(style.hasLines())
+				RenderUtils.drawTracers(matrixStack, partialTicks, tracerEnds,
+					tracerColors, depthTest);
+			
+			if(config.show_labels)
+			{
+				ArrayList<Vec3> labelPos = new ArrayList<>();
+				ArrayList<String> labelText = new ArrayList<>();
+				ArrayList<Integer> labelColors = new ArrayList<>();
+				for(Label label : labels)
 				{
-					outlineBoxes.add(target.box);
-					outlineColors.add(rgbWithAlpha(rgb, lineA));
+					labelPos.add(label.pos);
+					labelText.add(label.text);
+					labelColors.add(label.color);
 				}
+				RenderUtils.drawWorldLabels(matrixStack, labelPos, labelText,
+					labelColors);
 			}
 			
-			boolean drawTracer = style.hasLines()
-				&& (!config.tracers_nearest_only || isNearest);
-			if(drawTracer)
+			if(config.show_hud)
 			{
-				tracerEnds.add(target.center());
-				tracerColors.add(rgbWithAlpha(rgb, lineA));
-			}
-			
-			if(config.show_labels && c.dist <= config.label_max_distance)
-				labels.add(new Label(
-					target.center().add(0, target.box.getYsize() * 0.5 + 0.2, 0),
-					target.displayText(c.dist, config), rgbWithAlpha(rgb, lineA),
-					c.dist));
-		}
-		
-		labels.sort(Comparator.comparingDouble(l -> l.dist));
-		if(labels.size() > config.max_labels)
-			labels.subList(config.max_labels, labels.size()).clear();
-		
-		if(style.hasBoxes())
-		{
-			if(fill)
-				RenderUtils.drawSolidBoxes(matrixStack, fillBoxes, fillColors,
-					depthTest);
-			if(outline)
-				RenderUtils.drawOutlinedBoxes(matrixStack, outlineBoxes,
-					outlineColors, depthTest);
-		}
-		
-		if(style.hasLines())
-			RenderUtils.drawTracers(matrixStack, partialTicks, tracerEnds,
-				tracerColors, depthTest);
-		
-		if(config.show_labels)
-		{
-			ArrayList<Vec3> labelPos = new ArrayList<>();
-			ArrayList<String> labelText = new ArrayList<>();
-			ArrayList<Integer> labelColors = new ArrayList<>();
-			for(Label label : labels)
-			{
-				labelPos.add(label.pos);
-				labelText.add(label.text);
-				labelColors.add(label.color);
-			}
-			RenderUtils.drawWorldLabels(matrixStack, labelPos, labelText,
-				labelColors);
-		}
-		
-		if(config.show_hud && enabled)
-		{
-			String nearestText = nearest == null ? "-"
-				: nearest.label + " " + (int)nearestDist + "m";
-			hud.setLine("ChestESP  " + visible + "  nearest " + nearestText);
+				String nearestText = nearest == null ? "-"
+					: nearest.label + " " + (int)nearestDist + "m";
+				String base = config.base_finder_enable ? "  |  " + baseCluster.hudLine() : "";
+				hud.setLine("ChestESP  " + visible + "  nearest " + nearestText + base);
+			}else
+				hud.setLine("");
 		}else
+		{
 			hud.setLine("");
+		}
+		
+		// ----- Base clusters (loaded storage only) -----
+		if(enabled && config.base_finder_enable)
+			baseCluster.render(matrixStack, partialTicks, config);
+		
+		// ----- PlayerESP (independent of container toggle) -----
+		playerEsp.render(matrixStack, partialTicks, config);
+		if(config.player_esp_enable && config.show_hud)
+		{
+			hud.setPlayerLine("Players  " + playerEsp.count()
+				+ "  under:" + playerEsp.undergroundCount()
+				+ "  nearest " + playerEsp.nearestSummary(config));
+		}else
+			hud.setPlayerLine("");
+		
+		// ----- PacketIntel HUD -----
+		if(config.packet_intel_enable && config.packet_intel_hud)
+		{
+			hud.setIntelLine(packetIntel.summaryLine());
+			hud.setIntelLog(packetIntel.snapshot(config.packet_intel_log_lines));
+		}else
+		{
+			hud.setIntelLine("");
+			hud.setIntelLog(List.of());
+		}
 	}
 	
 	private static int rgbWithAlpha(int rgb, int alpha)
@@ -412,5 +501,15 @@ public final class ChestEspMod
 	public PlausibleAnalytics getPlausible()
 	{
 		return plausible;
+	}
+	
+	public PacketIntel getPacketIntel()
+	{
+		return packetIntel;
+	}
+	
+	public PlayerEsp getPlayerEsp()
+	{
+		return playerEsp;
 	}
 }

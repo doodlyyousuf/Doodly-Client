@@ -1,9 +1,6 @@
 /*
  * Copyright (c) 2023-2026 Wurst-Imperium and contributors.
- *
- * This source code is subject to the terms of the GNU General Public
- * License, version 3. If a copy of the GPL was not distributed with this
- * file, You can obtain one at: https://www.gnu.org/licenses/gpl-3.0.txt
+ * Extended with PlayerESP + PacketIntel options.
  */
 package net.wimods.chestesp;
 
@@ -112,134 +109,233 @@ public final class ChestEspConfig implements ConfigData
 	@ConfigEntry.Gui.Tooltip
 	public boolean hide_when_gui_open = true;
 	
+	// container type toggles + colors
 	public boolean include_basic_chests = true;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int chest_color = 0x00FF00;
 	
 	public boolean include_trap_chests = true;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int trap_chest_color = 0xFF8000;
 	
 	public boolean include_ender_chests = true;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int ender_chest_color = 0x00FFFF;
 	
 	public boolean include_chest_carts = true;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int chest_cart_color = 0xFFFF00;
 	
 	public boolean include_chest_boats = true;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int chest_boat_color = 0xFFFF00;
 	
 	public boolean include_barrels = true;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int barrel_color = 0x00FF00;
 	
 	public boolean include_pots = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int pot_color = 0x00FF00;
 	
 	public boolean include_shulker_boxes = true;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int shulker_box_color = 0xFF00FF;
 	
 	public boolean include_hoppers = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int hopper_color = 0xFFFFFF;
 	
 	public boolean include_hopper_carts = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int hopper_cart_color = 0xFFFF00;
 	
 	public boolean include_droppers = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int dropper_color = 0xFFFFFF;
 	
 	public boolean include_dispensers = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int dispenser_color = 0xFF8000;
 	
 	public boolean include_crafters = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int crafter_color = 0xFFFFFF;
 	
 	public boolean include_furnaces = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int furnace_color = 0xFF0000;
 	
 	public boolean include_brewing_stands = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int brewing_stand_color = 0xFF55FF;
 	
 	public boolean include_lecterns = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int lectern_color = 0xAA7733;
 	
 	public boolean include_bookshelves = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int bookshelf_color = 0xCCAA66;
 	
 	public boolean include_jukeboxes = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int jukebox_color = 0x55AAFF;
 	
 	public boolean include_shelves = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int shelf_color = 0xC8A06A;
 	
 	public boolean include_vaults = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int vault_color = 0xFFD700;
 	
 	public boolean include_suspicious = false;
-	
 	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
 	public int suspicious_color = 0xE8D48A;
 	
 	@ConfigEntry.Gui.Tooltip
 	public boolean plausible = true;
+	
+	// ========== PlayerESP ==========
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_enable = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_boxes = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_fill = false;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_tracers = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_tracers_nearest_only = false;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_labels = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_through_walls = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_underground_only = false;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_ignore_invisible = false;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_smooth = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_pulse_nearest = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_show_distance = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_show_health = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_show_armor = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_show_held = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean player_esp_show_speed = false;
+	
+	@ConfigEntry.BoundedDiscrete(min = 16, max = 256)
+	@ConfigEntry.Gui.Tooltip
+	public int player_esp_max_distance = 128;
+	
+	@ConfigEntry.BoundedDiscrete(min = 8, max = 128)
+	@ConfigEntry.Gui.Tooltip
+	public int player_esp_label_distance = 64;
+	
+	@ConfigEntry.BoundedDiscrete(min = 1, max = 32)
+	@ConfigEntry.Gui.Tooltip
+	public int player_esp_max_labels = 12;
+	
+	@ConfigEntry.Gui.Tooltip
+	public int player_esp_underground_y = 60;
+	
+	@ConfigEntry.BoundedDiscrete(min = 5, max = 120)
+	@ConfigEntry.Gui.Tooltip
+	public int player_esp_stale_seconds = 20;
+	
+	@ConfigEntry.ColorPicker
+	@ConfigEntry.Gui.Tooltip
+	public int player_esp_surface_color = 0x33FF33;
+	
+	@ConfigEntry.ColorPicker
+	@ConfigEntry.Gui.Tooltip
+	public int player_esp_underground_color = 0xFF3333;
+	
+	@ConfigEntry.ColorPicker
+	@ConfigEntry.Gui.Tooltip
+	public int player_esp_sound_color = 0xFFAA00;
+	
+	/** Comma-separated names to always hide */
+	@ConfigEntry.Gui.Tooltip
+	public String player_esp_hide_names = "";
+	
+	/** Comma-separated names to ONLY show (empty = show all) */
+	@ConfigEntry.Gui.Tooltip
+	public String player_esp_focus_names = "";
+	
+	// ========== PacketIntel ==========
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean packet_intel_enable = false;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean packet_intel_hud = true;
+	
+	@ConfigEntry.BoundedDiscrete(min = 3, max = 24)
+	@ConfigEntry.Gui.Tooltip
+	public int packet_intel_log_lines = 8;
+	
+	// ========== Base finder (loaded storage only) ==========
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean base_finder_enable = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean base_finder_tracers = true;
+	
+	@ConfigEntry.Gui.Tooltip
+	public boolean base_finder_through_walls = true;
+	
+	@ConfigEntry.BoundedDiscrete(min = 4, max = 48)
+	@ConfigEntry.Gui.Tooltip
+	public int base_finder_radius = 12;
+	
+	@ConfigEntry.BoundedDiscrete(min = 2, max = 20)
+	@ConfigEntry.Gui.Tooltip
+	public int base_finder_min_containers = 4;
+	
+	@ConfigEntry.BoundedDiscrete(min = 1, max = 24)
+	@ConfigEntry.Gui.Tooltip
+	public int base_finder_max_bases = 8;
+	
+	@ConfigEntry.BoundedDiscrete(min = 1, max = 12)
+	@ConfigEntry.Gui.Tooltip
+	public int base_finder_max_labels = 6;
+	
+	@ConfigEntry.BoundedDiscrete(min = 16, max = 256)
+	@ConfigEntry.Gui.Tooltip
+	public int base_finder_max_distance = 128;
+	
+	@ConfigEntry.ColorPicker
+	@ConfigEntry.Gui.Tooltip
+	public int base_finder_color = 0x55AAFF;
+	
+	@ConfigEntry.ColorPicker
+	@ConfigEntry.Gui.Tooltip
+	public int base_finder_shulker_color = 0xFF55FF;
 	
 	@Override
 	public void validatePostLoad()

@@ -5,7 +5,8 @@
   "client": [
     "ClientPlayerEntityMixin",
     "GameRendererMixin",
-    "WorldRendererMixin"
+    "WorldRendererMixin",
+    "ClientConnectionMixin"
   ],
   "injectors": {
     "defaultRequire": 1
