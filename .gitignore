@@ -1,0 +1,42 @@
+# Gradle
+.gradle/
+**/build/
+!**/gradle/wrapper/gradle-wrapper.jar
+
+# Fabric Loom / Minecraft run dirs
+**/run/
+**/runs/
+
+# Packaged output (rebuild with build-all / gradle)
+dist/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+*.launch
+out/
+bin/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs / crash dumps
+*.log
+hs_err_pid*
+replay_pid*
+
+# Local agent / scratch
+.ohmyagent/
+__pycache__/
+*.pyc
+_gi.py
+_fix.py
