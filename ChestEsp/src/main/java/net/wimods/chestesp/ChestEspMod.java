@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2023-2026 Wurst-Imperium and contributors.
- * Extended: PlayerESP + PacketIntel integration.
  */
 package net.wimods.chestesp;
 
@@ -40,23 +39,18 @@ import net.wimods.chestesp.util.RenderUtils;
 public final class ChestEspMod
 {
 	private static final Minecraft MC = Minecraft.getInstance();
-	public static final Logger LOGGER = LoggerFactory.getLogger("ChestESP");
+	public static final Logger LOGGER = LoggerFactory.getLogger("doodly");
 	
 	private final ConfigHolder<ChestEspConfig> configHolder;
 	private final PlausibleAnalytics plausible;
 	private final ChestEspGroupManager groups;
 	private final ChestEspHud hud = new ChestEspHud();
-	private final PlayerEsp playerEsp = new PlayerEsp();
-	private final PacketIntel packetIntel = new PacketIntel();
 	private final BaseCluster baseCluster = new BaseCluster();
 	
 	private final KeyMapping toggleKey;
 	private final KeyMapping toggleFillKey;
 	private final KeyMapping toggleLabelsKey;
 	private final KeyMapping cycleStyleKey;
-	private final KeyMapping togglePlayerEspKey;
-	private final KeyMapping togglePacketIntelKey;
-	private final KeyMapping dumpIntelKey;
 	
 	private final Set<Long> seenKeys = new HashSet<>();
 	private final Set<Long> openedKeys = new HashSet<>();
@@ -66,13 +60,12 @@ public final class ChestEspMod
 	
 	public ChestEspMod()
 	{
-		LOGGER.info("Starting ChestESP + PlayerESP + PacketIntel...");
+		LOGGER.info("Starting ChestESP...");
 		
 		configHolder = AutoConfig.register(ChestEspConfig.class,
 			GsonConfigSerializer::new);
 		
 		groups = new ChestEspGroupManager(configHolder);
-		packetIntel.setPlayerEspHook(playerEsp);
 		
 		KeyMapping.Category kbCategory = KeyMapping.Category
 			.register(Identifier.fromNamespaceAndPath("chestesp", "chestesp"));
@@ -90,23 +83,10 @@ public final class ChestEspMod
 		cycleStyleKey = KeyBindingHelper.registerKeyBinding(
 			new KeyMapping("key.chestesp.cycle_style", InputConstants.Type.KEYSYM,
 				InputConstants.UNKNOWN.getValue(), kbCategory, 0));
-		togglePlayerEspKey = KeyBindingHelper.registerKeyBinding(
-			new KeyMapping("key.chestesp.toggle_player_esp",
-				InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(),
-				kbCategory, 0));
-		togglePacketIntelKey = KeyBindingHelper.registerKeyBinding(
-			new KeyMapping("key.chestesp.toggle_packet_intel",
-				InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(),
-				kbCategory, 0));
-		dumpIntelKey = KeyBindingHelper.registerKeyBinding(
-			new KeyMapping("key.chestesp.dump_packet_intel",
-				InputConstants.Type.KEYSYM, InputConstants.UNKNOWN.getValue(),
-				kbCategory, 0));
 		
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			handleKeys();
 			if(client.level != null)
-				playerEsp.tick(configHolder.getConfig());
 		});
 		
 		ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> {
@@ -119,13 +99,8 @@ public final class ChestEspMod
 		ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> {
 			seenKeys.clear();
 			openedKeys.clear();
-			playerEsp.clear();
-			packetIntel.clear();
 			baseCluster.clear();
 			hud.setLine("");
-			hud.setPlayerLine("");
-			hud.setIntelLine("");
-			hud.setIntelLog(List.of());
 		});
 		
 		UseBlockCallback.EVENT.register((player, world, hand, hit) -> {
@@ -166,21 +141,6 @@ public final class ChestEspMod
 			ChestEspStyle[] values = ChestEspStyle.values();
 			config.style = values[(config.style.ordinal() + 1) % values.length];
 			changed = true;
-		}
-		while(togglePlayerEspKey.consumeClick())
-		{
-			config.player_esp_enable = !config.player_esp_enable;
-			changed = true;
-		}
-		while(togglePacketIntelKey.consumeClick())
-		{
-			config.packet_intel_enable = !config.packet_intel_enable;
-			changed = true;
-		}
-		while(dumpIntelKey.consumeClick())
-		{
-			if(config.packet_intel_enable)
-				packetIntel.dumpToFile();
 		}
 		
 		if(changed)
@@ -274,7 +234,7 @@ public final class ChestEspMod
 	
 	/**
 	 * Called every frame from WorldRendererMixin.
-	 * Container ESP only runs when enabled; PlayerESP/PacketIntel are independent.
+	 * Container ESP only runs when enabled.
 	 */
 	public void onRender(PoseStack matrixStack, float partialTicks)
 	{
@@ -283,9 +243,6 @@ public final class ChestEspMod
 		if(config.hide_when_gui_open && MC.screen != null)
 		{
 			hud.setLine("");
-			hud.setPlayerLine("");
-			hud.setIntelLine("");
-			hud.setIntelLog(List.of());
 			return;
 		}
 		
@@ -452,27 +409,6 @@ public final class ChestEspMod
 		// ----- Base clusters (loaded storage only) -----
 		if(enabled && config.base_finder_enable)
 			baseCluster.render(matrixStack, partialTicks, config);
-		
-		// ----- PlayerESP (independent of container toggle) -----
-		playerEsp.render(matrixStack, partialTicks, config);
-		if(config.player_esp_enable && config.show_hud)
-		{
-			hud.setPlayerLine("Players  " + playerEsp.count()
-				+ "  under:" + playerEsp.undergroundCount()
-				+ "  nearest " + playerEsp.nearestSummary(config));
-		}else
-			hud.setPlayerLine("");
-		
-		// ----- PacketIntel HUD -----
-		if(config.packet_intel_enable && config.packet_intel_hud)
-		{
-			hud.setIntelLine(packetIntel.summaryLine());
-			hud.setIntelLog(packetIntel.snapshot(config.packet_intel_log_lines));
-		}else
-		{
-			hud.setIntelLine("");
-			hud.setIntelLog(List.of());
-		}
 	}
 	
 	private static int rgbWithAlpha(int rgb, int alpha)
@@ -503,13 +439,5 @@ public final class ChestEspMod
 		return plausible;
 	}
 	
-	public PacketIntel getPacketIntel()
-	{
-		return packetIntel;
-	}
 	
-	public PlayerEsp getPlayerEsp()
-	{
-		return playerEsp;
-	}
 }

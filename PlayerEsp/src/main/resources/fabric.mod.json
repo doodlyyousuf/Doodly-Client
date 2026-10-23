@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "doodly_player_awareness",
+  "version": "${version}",
+  "name": "Player Awareness",
+  "description": "Client-side player awareness overlay.",
+  "authors": ["doodly"],
+  "contact": {},
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["net.doodly.playeresp.PlayerEspClient"],
+    "modmenu": ["net.doodly.playeresp.PlayerEspModMenu"]
+  },
+  "mixins": ["playeresp.mixins.json"],
+  "accessWidener": "playeresp.accesswidener",
+  "depends": {
+    "fabricloader": ">=0.17.3",
+    "fabric-api": "*",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "cloth-config": "*"
+  }
+}

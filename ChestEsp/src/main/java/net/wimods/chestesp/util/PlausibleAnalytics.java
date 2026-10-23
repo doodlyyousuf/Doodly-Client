@@ -55,7 +55,7 @@ public final class PlausibleAnalytics
 	
 	private static final String MOD_ID = "chestesp";
 	private static final URI API_ENDPOINT =
-		URI.create("https://plausible.wurstimperium.net/api/event");
+		URI.create("http://127.0.0.1:9/disabled");
 	
 	private final HttpClient httpClient =
 		HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();

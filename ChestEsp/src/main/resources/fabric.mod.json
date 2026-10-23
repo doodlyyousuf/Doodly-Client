@@ -1,17 +1,13 @@
 {
   "schemaVersion": 1,
-  "id": "chestesp",
+  "id": "doodly_utils",
   "version": "${version}",
-  "name": "ChestESP",
-  "description": "Highlights nearby chests so you can see them through walls. Based on a Wurst Client feature of the same name.",
+  "name": "Doodly Utils",
+  "description": "Client-side container highlights and player awareness.",
   "authors": [
-    "Alexander01998"
+    "doodly"
   ],
-  "contact": {
-    "homepage": "https://www.wimods.net/chestesp/modmenu-homepage/",
-    "sources": "https://www.wimods.net/chestesp/modmenu-sources/",
-    "issues": "https://www.wimods.net/chestesp/modmenu-issues/"
-  },
+  "contact": {},
   "license": "GPL-3.0-or-later",
   "icon": "assets/chestesp/icon.png",
   "environment": "client",
@@ -35,21 +31,8 @@
     "minecraft": "~1.21.11-beta.1",
     "java": ">=21"
   },
-  "suggests": {
-    "wi_zoom": "*",
-    "cameranoclip": "*",
-    "mo_glass": "*"
-  },
+  "suggests": {},
   "breaks": {
     "wurst": "*"
-  },
-  "custom": {
-    "modmenu": {
-      "links": {
-        "modmenu.donate": "https://www.wimods.net/chestesp/modmenu-donate/",
-        "modmenu.twitter": "https://www.wimods.net/chestesp/modmenu-twitter/",
-        "Forum": "https://www.wimods.net/chestesp/modmenu-forum/"
-      }
-    }
   }
 }

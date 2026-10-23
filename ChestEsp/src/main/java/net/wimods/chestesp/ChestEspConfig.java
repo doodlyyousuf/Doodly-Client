@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2023-2026 Wurst-Imperium and contributors.
- * Extended with PlayerESP + PacketIntel options.
+
  */
 package net.wimods.chestesp;
 
@@ -195,108 +195,7 @@ public final class ChestEspConfig implements ConfigData
 	public int suspicious_color = 0xE8D48A;
 	
 	@ConfigEntry.Gui.Tooltip
-	public boolean plausible = true;
-	
-	// ========== PlayerESP ==========
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_enable = true;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_boxes = true;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_fill = false;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_tracers = true;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_tracers_nearest_only = false;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_labels = true;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_through_walls = true;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_underground_only = false;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_ignore_invisible = false;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_smooth = true;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_pulse_nearest = true;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_show_distance = true;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_show_health = true;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_show_armor = true;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_show_held = true;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean player_esp_show_speed = false;
-	
-	@ConfigEntry.BoundedDiscrete(min = 16, max = 256)
-	@ConfigEntry.Gui.Tooltip
-	public int player_esp_max_distance = 128;
-	
-	@ConfigEntry.BoundedDiscrete(min = 8, max = 128)
-	@ConfigEntry.Gui.Tooltip
-	public int player_esp_label_distance = 64;
-	
-	@ConfigEntry.BoundedDiscrete(min = 1, max = 32)
-	@ConfigEntry.Gui.Tooltip
-	public int player_esp_max_labels = 12;
-	
-	@ConfigEntry.Gui.Tooltip
-	public int player_esp_underground_y = 60;
-	
-	@ConfigEntry.BoundedDiscrete(min = 5, max = 120)
-	@ConfigEntry.Gui.Tooltip
-	public int player_esp_stale_seconds = 20;
-	
-	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
-	public int player_esp_surface_color = 0x33FF33;
-	
-	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
-	public int player_esp_underground_color = 0xFF3333;
-	
-	@ConfigEntry.ColorPicker
-	@ConfigEntry.Gui.Tooltip
-	public int player_esp_sound_color = 0xFFAA00;
-	
-	/** Comma-separated names to always hide */
-	@ConfigEntry.Gui.Tooltip
-	public String player_esp_hide_names = "";
-	
-	/** Comma-separated names to ONLY show (empty = show all) */
-	@ConfigEntry.Gui.Tooltip
-	public String player_esp_focus_names = "";
-	
-	// ========== PacketIntel ==========
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean packet_intel_enable = false;
-	
-	@ConfigEntry.Gui.Tooltip
-	public boolean packet_intel_hud = true;
-	
-	@ConfigEntry.BoundedDiscrete(min = 3, max = 24)
-	@ConfigEntry.Gui.Tooltip
-	public int packet_intel_log_lines = 8;
+	public boolean plausible = false;
 	
 	// ========== Base finder (loaded storage only) ==========
 	
