@@ -1,0 +1,15 @@
+{
+  "fabric_api_version": "fabric-api",
+  "modmenu_version": "modmenu",
+  "cloth_config_version": {
+    "slug": "cloth-config",
+    "version_transform": {
+      "pattern": "\\+(fabric|neoforge)$",
+      "replacement": ""
+    }
+  },
+  "lootr_version": {
+    "slug": "lootr",
+    "use_id": true
+  }
+}
