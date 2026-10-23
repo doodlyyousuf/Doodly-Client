@@ -80,21 +80,58 @@ public final class Overlay
 			
 			if(config.labels && dist <= config.labelDistance)
 			{
-				StringBuilder sb = new StringBuilder();
-				if(t.friend) sb.append("[F] ");
-				sb.append(t.name);
-				if(config.showDistance) sb.append(' ').append((int)dist).append('m');
-				if(config.showHealth && t.health >= 0)
-					sb.append(' ').append(String.format(Locale.ROOT, "%.0f",
-						t.health + t.absorption)).append("hp");
-				if(config.showArmor && t.armorPieces > 0)
-					sb.append(' ').append(t.armorPieces).append("a");
-				if(config.showHeld && !t.held.isEmpty())
-					sb.append(' ').append(trunc(t.held, 12));
+				// multi-line stack above head: name / health / held
+				String clearName = stripCodes(t.name);
+				if(t.friend) clearName = "[F] " + clearName;
+				if(t.fromSoundOnly) clearName = clearName + " ~" + t.confidence;
+				
+				double baseY = t.fromSoundOnly ? 1.0 : 2.25;
+				int line = 0;
+				
+				// line 0: clear name (+ distance)
+				String nameLine = clearName;
+				if(config.showDistance)
+					nameLine = nameLine + " " + (int)dist + "m";
+				labels.add(new Label(pos.add(0, baseY + line * 0.28, 0),
+					nameLine, 0xFFFFFF, dist));
+				line++;
+				
+				// line 1: health
+				if(config.showHealth && t.health >= 0 && !t.fromSoundOnly)
+				{
+					float total = t.health + t.absorption;
+					String hp = String.format(Locale.ROOT, "%.0f/%.0f HP",
+						total, 20.0 + t.absorption);
+					int hpColor = total > 14 ? 0x55FF55
+						: total > 8 ? 0xFFAA00 : 0xFF5555;
+					labels.add(new Label(pos.add(0, baseY + line * 0.28, 0),
+						hp, hpColor, dist));
+					line++;
+				}
+				
+				// line 2: held item
+				if(config.showHeld && !t.held.isEmpty() && !t.fromSoundOnly)
+				{
+					String item = stripCodes(t.held);
+					if(item.length() > 24) item = item.substring(0, 23) + "…";
+					labels.add(new Label(pos.add(0, baseY + line * 0.28, 0),
+						item, 0xFFD700, dist));
+					line++;
+				}
+				
+				// optional armor / speed under item
+				if(config.showArmor && t.armorPieces > 0 && !t.fromSoundOnly)
+				{
+					labels.add(new Label(pos.add(0, baseY + line * 0.28, 0),
+						t.armorPieces + " armor", 0xAAAAAA, dist));
+					line++;
+				}
 				if(config.showSpeed && t.speed > 0.1)
-					sb.append(' ').append(String.format(Locale.ROOT, "%.1f", t.speed));
-				if(t.fromSoundOnly) sb.append(" ~").append(t.confidence);
-				labels.add(new Label(pos.add(0, 2.1, 0), sb.toString(), color, dist));
+				{
+					labels.add(new Label(pos.add(0, baseY + line * 0.28, 0),
+						String.format(Locale.ROOT, "%.1f b/s", t.speed),
+						0xAAAAAA, dist));
+				}
 			}
 		}
 		
@@ -200,5 +237,24 @@ public final class Overlay
 		return s.length() <= max ? s : s.substring(0, max - 1) + "…";
 	}
 	
+	private static String stripCodes(String s)
+	{
+		if(s == null) return "";
+		StringBuilder out = new StringBuilder(s.length());
+		for(int i = 0; i < s.length(); i++)
+		{
+			char c = s.charAt(i);
+			if(c == '§' || c == '&')
+			{
+				if(i + 1 < s.length()) i++;
+				continue;
+			}
+			if(c < 32) continue;
+			out.append(c);
+		}
+		return out.toString().trim();
+	}
+	
 	private record Label(Vec3 pos, String text, int color, double dist) {}
 }
+

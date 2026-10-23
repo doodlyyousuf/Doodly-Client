@@ -118,7 +118,9 @@ public final class Tracker
 			if(p == MC.player) continue;
 			if(config.ignoreInvisible && p.isInvisible()) continue;
 			
-			String name = p.getName().getString();
+			String name = p.getGameProfile().getName();
+			if(name == null || name.isBlank())
+				name = p.getName().getString();
 			String lower = name.toLowerCase(Locale.ROOT);
 			if(hide.contains(lower)) continue;
 			if(!focus.isEmpty() && !focus.contains(lower)) continue;
@@ -147,7 +149,17 @@ public final class Tracker
 					+ p.getDeltaMovement().z * p.getDeltaMovement().z) * 20.0;
 			
 			ItemStack main = p.getMainHandItem();
-			t.held = main.isEmpty() ? "" : main.getHoverName().getString();
+			if(main.isEmpty())
+				t.held = "";
+			else
+			{
+				String hover = main.getHoverName().getString();
+				String path = main.getItem().toString(); // e.g. minecraft:netherite_sword
+				int colon = path.indexOf(':');
+				String plain = colon >= 0 ? path.substring(colon + 1).replace('_', ' ') : path;
+				// prefer custom name if different from plain translation-ish
+				t.held = hover.isBlank() ? plain : hover;
+			}
 			int armor = 0;
 			for(EquipmentSlot slot : new EquipmentSlot[] {
 				EquipmentSlot.HEAD, EquipmentSlot.CHEST,

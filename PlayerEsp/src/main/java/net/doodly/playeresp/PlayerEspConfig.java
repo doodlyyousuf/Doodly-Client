@@ -34,7 +34,7 @@ public class PlayerEspConfig implements ConfigData
 	public int labelDistance = 64;
 	
 	@ConfigEntry.BoundedDiscrete(min = 1, max = 32)
-	public int maxLabels = 12;
+	public int maxLabels = 36;
 	
 	public int undergroundY = 60;
 	
