@@ -87,6 +87,7 @@ public final class ChestEspMod
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			handleKeys();
 			if(client.level != null)
+			onUpdate();
 		});
 		
 		ClientChunkEvents.CHUNK_LOAD.register((world, chunk) -> {

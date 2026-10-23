@@ -1,0 +1,10 @@
+{
+  "required": true,
+  "package": "net.doodly.playeresp.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ConnectionMixin",
+    "LevelRendererMixin"
+  ],
+  "injectors": { "defaultRequire": 1 }
+}

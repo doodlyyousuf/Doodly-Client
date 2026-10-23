@@ -90,7 +90,7 @@ public final class Tracker
 		}
 		else if(y < 80)
 		{
-			UUID phantom = new UUID(0xSOUND0000000000L, key);
+			UUID phantom = new UUID(0x534F554E44000000L, key);
 			Tracked t = tracked.computeIfAbsent(phantom, Tracked::new);
 			t.name = "~";
 			t.lastPos = t.pos;
@@ -118,7 +118,7 @@ public final class Tracker
 			if(p == MC.player) continue;
 			if(config.ignoreInvisible && p.isInvisible()) continue;
 			
-			String name = p.getGameProfile().getName();
+			String name = p.getName().getString();
 			if(name == null || name.isBlank())
 				name = p.getName().getString();
 			String lower = name.toLowerCase(Locale.ROOT);
