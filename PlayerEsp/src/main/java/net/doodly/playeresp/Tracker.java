@@ -61,46 +61,87 @@ public final class Tracker
 	
 	private final Map<UUID, Tracked> tracked = new ConcurrentHashMap<>();
 	
+	/**
+	 * Sound side-channel — STRICT.
+	 * Cows/pigs use the same block.*.step as players. Those must never become "~player".
+	 * Only minecraft:entity.player.* may create sound phantoms.
+	 * Block dig/place only refreshes an already-known real player track.
+	 */
 	public void onPositionalSound(double x, double y, double z, String soundId)
 	{
 		if(soundId == null) return;
+		// ignore local player — own steps/digs must never become markers
+		if(MC.player != null)
+		{
+			double dx = x - MC.player.getX();
+			double dy = y - MC.player.getY();
+			double dz = z - MC.player.getZ();
+			if(dx * dx + dy * dy + dz * dz < 12.0) // ~3.5 blocks
+				return;
+		}
 		String s = soundId.toLowerCase(Locale.ROOT);
-		if(!(s.contains("step") || s.contains("dig") || s.contains("hit")
-			|| s.contains("place") || s.contains("splash") || s.contains("eat")
-			|| s.contains("burp") || s.contains("hurt") || s.contains("fall")
-			|| s.contains("swim") || s.contains("armor") || s.contains("elytra")))
+		
+		// anything that is a non-player entity sound → out
+		if(s.contains("entity.") && !s.contains("entity.player"))
+			return;
+		if(s.contains("ambient.") || s.contains("weather.") || s.contains("ui.")
+			|| s.contains("music.") || s.contains("particle."))
+			return;
+		
+		boolean playerSound = s.contains("entity.player");
+		// block step/hit is shared with mobs — NEVER create a phantom from it
+		boolean blockStep = s.contains(".step") || s.contains("block.grass")
+			|| s.contains("block.stone.step") || s.contains("block.sand.step")
+			|| s.contains("block.wood.step") || s.contains("block.snow.step");
+		if(blockStep && !playerSound)
+			return;
+		
+		boolean containerOpen = s.contains("chest") || s.contains("barrel")
+			|| s.contains("shulker") || s.contains("ender_chest");
+		boolean digPlace = playerSound && (s.contains("break") || s.contains("place")
+			|| s.contains("attack") || s.contains("hurt") || s.contains("fall")
+			|| s.contains("swim") || s.contains("splash") || s.contains("step")
+			|| s.contains("burp") || s.contains("eat") || s.contains("teleport"));
+		
+		if(!playerSound && !containerOpen)
 			return;
 		
 		long now = System.currentTimeMillis();
-		long key = (Math.round(x) << 32) ^ (Math.round(y) << 16) ^ Math.round(z);
+		Vec3 hit = new Vec3(x, y, z);
 		
+		// reinforce nearest REAL player only
 		Tracked best = null;
 		double bestD = 6.0;
-		Vec3 hit = new Vec3(x, y, z);
-		for(Tracked t : tracked.values())
+		for(Tracked tr : tracked.values())
 		{
-			if(t.pos == null) continue;
-			double d = t.pos.distanceTo(hit);
-			if(d < bestD) { bestD = d; best = t; }
+			if(tr.pos == null || tr.fromSoundOnly) continue;
+			double d = tr.pos.distanceTo(hit);
+			if(d < bestD) { bestD = d; best = tr; }
 		}
 		if(best != null)
 		{
 			best.lastSound = now;
-			best.confidence = Math.min(100, best.confidence + 8);
+			best.confidence = Math.min(100, best.confidence + 5);
+			return;
 		}
-		else if(y < 80)
-		{
-			UUID phantom = new UUID(0x534F554E44000000L, key);
-			Tracked t = tracked.computeIfAbsent(phantom, Tracked::new);
-			t.name = "~";
-			t.lastPos = t.pos;
-			t.pos = hit;
-			t.lastUpdate = now;
-			t.lastSound = now;
-			t.underground = y < 60;
-			t.fromSoundOnly = true;
-			t.confidence = 35;
-		}
+		
+		// phantom: entity.player.* only, and prefer underground (filter noise)
+		if(!playerSound)
+			return; // container opens without a known player → ignore for player ESP
+		if(y >= 72)
+			return;
+		
+		long key = (Math.round(x * 2) << 32) ^ (Math.round(y * 2) << 16) ^ Math.round(z * 2);
+		UUID phantom = new UUID(0x534F554E44000000L, key);
+		Tracked tr = tracked.computeIfAbsent(phantom, Tracked::new);
+		tr.name = "~player";
+		tr.lastPos = tr.pos == null ? hit : tr.pos;
+		tr.pos = hit;
+		tr.lastUpdate = now;
+		tr.lastSound = now;
+		tr.underground = y < 60;
+		tr.fromSoundOnly = true;
+		tr.confidence = digPlace ? 45 : 30;
 	}
 	
 	public void tick(PlayerEspConfig config)
@@ -120,7 +161,7 @@ public final class Tracker
 			
 			String name = p.getName().getString();
 			if(name == null || name.isBlank())
-				name = p.getUUID().toString();
+				name = p.getScoreboardName();
 			String lower = name.toLowerCase(Locale.ROOT);
 			if(hide.contains(lower)) continue;
 			if(!focus.isEmpty() && !focus.contains(lower)) continue;

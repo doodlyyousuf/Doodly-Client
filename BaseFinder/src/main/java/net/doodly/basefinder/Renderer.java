@@ -6,6 +6,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.doodly.basefinder.Scanner.Cluster;
 import net.doodly.basefinder.Scanner.Hit;
+import net.doodly.basefinder.Scanner.Target;
 import net.doodly.basefinder.util.RenderUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -32,6 +33,61 @@ public final class Renderer
 		ArrayList<String> texts = new ArrayList<>();
 		ArrayList<Integer> lcols = new ArrayList<>();
 		
+		// individual targets (chests, spawners, …)
+		for(Target t : scanner.targets())
+		{
+			Vec3 c = Vec3.atCenterOf(t.pos);
+			if(cam.distanceTo(c) > cfg.maxDistance) continue;
+			double s = t.kind.contains("spawner") ? 0.55 : 0.45;
+			boxes.add(new AABB(c.x - s, c.y - s, c.z - s, c.x + s, c.y + s, c.z + s));
+			cols.add(t.color | 0xFF000000);
+			// always label spawners clearly
+			if(t.kind.contains("spawner"))
+			{
+				String name = "SPAWNER";
+				labs.add(c.add(0, 1.35, 0));
+				texts.add(name);
+				lcols.add(0xFF5555);
+				if(cfg.tracers)
+				{
+					tracers.add(c);
+					tcols.add(t.color | 0xFF000000);
+				}
+			}
+			else
+			{
+				// optional short label for storage when close
+				double dist = cam.distanceTo(c);
+				if(dist < 48)
+				{
+					labs.add(c.add(0, 0.9, 0));
+					texts.add(t.kind.replace('_', ' ').toUpperCase());
+					lcols.add(t.color);
+				}
+			}
+		}
+		
+		// session stashes
+		for(Cluster cl : scanner.stashes())
+		{
+			Vec3 c = new Vec3(cl.x, cl.y, cl.z);
+			if(cam.distanceTo(c) > cfg.maxDistance * 2) continue;
+			double s = 0.8 + Math.min(2.5, cl.count * 0.12);
+			boxes.add(new AABB(c.x - s, c.y - 0.5, c.z - s, c.x + s, c.y + 2.0, c.z + s));
+			cols.add(0xFFFF55FF);
+			String tag = "STASH x" + cl.count;
+			if(cl.spawners > 0) tag += " SP" + cl.spawners;
+			labs.add(c.add(0, 2.4, 0));
+			texts.add(String.format("%s (%d,%d,%d)", tag, (int)cl.x, (int)cl.y, (int)cl.z));
+			lcols.add(0xFF55FF);
+			if(cfg.tracers)
+			{
+				tracers.add(c);
+				tcols.add(0xFFFF55FF);
+			}
+		}
+		
+		// live clusters
 		for(Cluster cl : scanner.clusters())
 		{
 			Vec3 c = new Vec3(cl.x, cl.y, cl.z);
@@ -44,12 +100,14 @@ public final class Renderer
 				tracers.add(c);
 				tcols.add(cfg.clusterColor | 0xFF000000);
 			}
+			String lab = "BASE x" + cl.count;
+			if(cl.shulkers > 0) lab += " S" + cl.shulkers;
+			if(cl.spawners > 0) lab += " SP" + cl.spawners;
 			labs.add(c.add(0, 2.0, 0));
-			texts.add("BASE x" + cl.count + (cl.shulkers > 0 ? " S" + cl.shulkers : ""));
+			texts.add(lab);
 			lcols.add(cfg.clusterColor);
 		}
 		
-		// light hits (cap draw count)
 		int drawn = 0;
 		for(Hit h : scanner.lights())
 		{
@@ -67,7 +125,7 @@ public final class Renderer
 				h.pos.x + 0.35, h.pos.y + 0.7, h.pos.z + 0.35));
 			cols.add(h.color | 0xFF000000);
 			labs.add(h.pos.add(0, 1.0, 0));
-			texts.add("~");
+			texts.add(h.label);
 			lcols.add(h.color);
 		}
 		

@@ -27,6 +27,8 @@ public class ConnectionMixin
 			PlayerEspClient mod = PlayerEspClient.get();
 			if(mod == null || !mod.getConfig().enabled)
 				return;
+			if(!mod.getConfig().soundPhantoms)
+				return;
 			var loc = sound.getSound().value().location();
 			String id = loc == null ? "" : loc.toString();
 			mod.getTracker().onPositionalSound(

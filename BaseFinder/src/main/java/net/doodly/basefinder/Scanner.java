@@ -7,27 +7,25 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.LightLayer;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.ChestBlockEntity;
-import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
-import net.minecraft.world.level.block.entity.BarrelBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Loaded-chunk only. No C2S. No portal markers.
- * Light: block-light > sky (artificial) underground → base cue.
- * Storage: block-entities already in client memory.
- * Sound: dig/step markers from inbound packets.
+ * Loaded-chunk only. No C2S. Patterns adapted from open Donut-style finders:
+ * scan block entities already on the client (chests, shulkers, spawners).
+ * Light: artificial block-light underground.
+ * Sound: entity.player.* only, never self, never mobs.
  */
 public final class Scanner
 {
 	private static final Minecraft MC = Minecraft.getInstance();
+	private static final int MAX_LIGHT = 250;
 	
 	public static final class Hit
 	{
@@ -51,10 +49,27 @@ public final class Scanner
 		public int count;
 		public int shulkers;
 		public int chests;
+		public int spawners;
+	}
+	
+	public static final class Target
+	{
+		public final BlockPos pos;
+		public final String kind; // chest, shulker, spawner, ...
+		public final int color;
+		
+		public Target(BlockPos pos, String kind, int color)
+		{
+			this.pos = pos;
+			this.kind = kind;
+			this.color = color;
+		}
 	}
 	
 	private final ArrayList<Hit> lights = new ArrayList<>();
 	private final ArrayList<Cluster> clusters = new ArrayList<>();
+	private final ArrayList<Cluster> stashes = new ArrayList<>();
+	private final ArrayList<Target> targets = new ArrayList<>();
 	private final Map<Long, Hit> sounds = new ConcurrentHashMap<>();
 	
 	public synchronized void scan(BaseFinderConfig cfg)
@@ -63,62 +78,77 @@ public final class Scanner
 		
 		lights.clear();
 		clusters.clear();
+		targets.clear();
 		
 		Vec3 origin = MC.player.position();
 		int range = cfg.lightScanRange;
 		int step = Math.max(2, cfg.lightStep);
-		BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
+		int chunkR = Math.max(1, (int)Math.ceil(Math.max(range, cfg.maxDistance) / 16.0));
+		int centerX = MC.player.chunkPosition().x;
+		int centerZ = MC.player.chunkPosition().z;
 		
 		ArrayList<Vec3> storagePts = new ArrayList<>();
 		ArrayList<String> storageKinds = new ArrayList<>();
 		
-		int minCx = ((int)origin.x - range) >> 4;
-		int maxCx = ((int)origin.x + range) >> 4;
-		int minCz = ((int)origin.z - range) >> 4;
-		int maxCz = ((int)origin.z + range) >> 4;
-		
-		for(int cx = minCx; cx <= maxCx; cx++)
+		for(int cx = centerX - chunkR; cx <= centerX + chunkR; cx++)
 		{
-			for(int cz = minCz; cz <= maxCz; cz++)
+			for(int cz = centerZ - chunkR; cz <= centerZ + chunkR; cz++)
 			{
-				if(!MC.level.hasChunk(cx, cz)) continue;
-				LevelChunk chunk = MC.level.getChunk(cx, cz);
+				var chunk = MC.level.getChunkSource().getChunk(cx, cz, ChunkStatus.FULL, false);
+				if(chunk == null) continue;
 				
-				// block entities = storage already known to client
-				if(cfg.storageClusters)
+				// --- block entities (same idea as Raindots finder) ---
+				if(cfg.storageClusters || cfg.spawners)
 				{
 					for(BlockEntity be : chunk.getBlockEntities().values())
 					{
+						if(be.isRemoved()) continue;
 						BlockPos bp = be.getBlockPos();
-						double d = origin.distanceTo(Vec3.atCenterOf(bp));
-						if(d > cfg.maxDistance) continue;
-						String kind = null;
-						if(be instanceof ShulkerBoxBlockEntity) kind = "shulker";
-						else if(be instanceof ChestBlockEntity) kind = "chest";
-						else if(be instanceof BarrelBlockEntity) kind = "barrel";
+						double dsq = bp.distToCenterSqr(origin);
+						if(dsq > (double)cfg.maxDistance * cfg.maxDistance) continue;
+						
+						BlockState st = be.getBlockState();
+						String kind = classify(st, cfg);
 						if(kind == null) continue;
-						storagePts.add(Vec3.atCenterOf(bp));
-						storageKinds.add(kind);
+						
+						int color = colorFor(kind, cfg);
+						targets.add(new Target(bp.immutable(), kind, color));
+						
+						if(kind.equals("spawner"))
+						{
+							if(!cfg.spawners) continue;
+							// each spawner is its own "cluster" seed
+							storagePts.add(Vec3.atCenterOf(bp));
+							storageKinds.add("spawner");
+						}
+						else if(cfg.storageClusters)
+						{
+							storagePts.add(Vec3.atCenterOf(bp));
+							storageKinds.add(kind);
+						}
 					}
 				}
 				
-				// light step-scan
-				if(cfg.lightScan)
+				// --- artificial light ---
+				if(cfg.lightScan && chunk instanceof LevelChunk)
 				{
 					int x0 = cx << 4;
 					int z0 = cz << 4;
-					for(int x = x0; x < x0 + 16; x += step)
+					BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
+					int lightDrawn = 0;
+					for(int x = x0; x < x0 + 16 && lightDrawn < MAX_LIGHT; x += step)
 					{
-						for(int z = z0; z < z0 + 16; z += step)
+						for(int z = z0; z < z0 + 16 && lightDrawn < MAX_LIGHT; z += step)
 						{
 							int yMax = cfg.lightUndergroundOnly ? cfg.lightMaxY : 128;
 							int yMin = MC.level.getMinY();
-							for(int y = yMin; y <= yMax; y += step)
+							for(int y = yMin; y <= yMax && lightDrawn < MAX_LIGHT; y += step)
 							{
 								m.set(x, y, z);
 								if(!MC.level.isLoaded(m)) continue;
-								double d = origin.distanceTo(Vec3.atCenterOf(m));
-								if(d > cfg.maxDistance) continue;
+								if(origin.distanceToSqr(x + 0.5, y + 0.5, z + 0.5)
+									> (double)cfg.maxDistance * cfg.maxDistance)
+									continue;
 								
 								int blockL = MC.level.getBrightness(LightLayer.BLOCK, m);
 								if(blockL < cfg.minBlockLight) continue;
@@ -127,15 +157,11 @@ public final class Scanner
 									int sky = MC.level.getBrightness(LightLayer.SKY, m);
 									if(blockL <= sky) continue;
 								}
-								
 								BlockState st = MC.level.getBlockState(m);
 								if(st.isAir()) continue;
-								// skip pure sky-open surface noise
-								if(cfg.lightUndergroundOnly && y > cfg.lightMaxY)
-									continue;
 								
-								lights.add(new Hit(Vec3.atCenterOf(m),
-									"L" + blockL, cfg.lightColor));
+								lights.add(new Hit(Vec3.atCenterOf(m), "L" + blockL, cfg.lightColor));
+								lightDrawn++;
 							}
 						}
 					}
@@ -143,7 +169,7 @@ public final class Scanner
 			}
 		}
 		
-		// cluster storage points
+		// cluster nearby storage / spawners
 		if(cfg.storageClusters && !storagePts.isEmpty())
 		{
 			double r = cfg.clusterRadius;
@@ -168,53 +194,133 @@ public final class Scanner
 						if(dx * dx + dy * dy + dz * dz > r2) continue;
 						used[j] = true;
 						cl.count++;
-						if("shulker".equals(storageKinds.get(j))) cl.shulkers++;
-						if("chest".equals(storageKinds.get(j))) cl.chests++;
-						// re-center
+						String k = storageKinds.get(j);
+						if("shulker".equals(k)) cl.shulkers++;
+						if("chest".equals(k) || "trapped_chest".equals(k)
+							|| "ender_chest".equals(k)) cl.chests++;
+						if("spawner".equals(k))
+							cl.spawners++;
 						cl.x = (cl.x * (cl.count - 1) + p.x) / cl.count;
 						cl.y = (cl.y * (cl.count - 1) + p.y) / cl.count;
 						cl.z = (cl.z * (cl.count - 1) + p.z) / cl.count;
 						grew = true;
 					}
 				}
-				if(cl.count >= cfg.minContainers)
+				// spawners alone count as a base even with minContainers
+				boolean keep = cl.count >= cfg.minContainers || cl.spawners > 0;
+				if(keep)
+				{
 					clusters.add(cl);
+					if(cfg.stashLog)
+						rememberStash(cl, cfg);
+				}
 			}
 		}
 		
-		// prune old sounds
 		long now = System.currentTimeMillis();
 		sounds.entrySet().removeIf(e -> now - e.getValue().time > 12000);
+	}
+	
+	private static String classify(BlockState st, BaseFinderConfig cfg)
+	{
+		if(st.is(Blocks.SPAWNER)) return cfg.spawners ? "spawner" : null;
+		// trial spawners excluded — only classic mob spawners
+		if(!cfg.storageClusters) return null;
+		if(st.is(Blocks.CHEST)) return "chest";
+		if(st.is(Blocks.TRAPPED_CHEST)) return "trapped_chest";
+		if(st.is(Blocks.ENDER_CHEST)) return "ender_chest";
+		if(st.getBlock() instanceof ShulkerBoxBlock) return "shulker";
+		if(st.is(Blocks.BARREL)) return "barrel";
+		if(st.is(Blocks.DROPPER)) return "dropper";
+		if(st.is(Blocks.DISPENSER)) return "dispenser";
+		if(st.is(Blocks.HOPPER)) return "hopper";
+		return null;
+	}
+	
+	private static int colorFor(String kind, BaseFinderConfig cfg)
+	{
+		return switch(kind)
+		{
+			case "spawner" -> cfg.spawnerColor;
+			case "shulker" -> 0xFF00FF;
+			case "ender_chest" -> 0x00FFFF;
+			case "trapped_chest" -> 0xFF8000;
+			default -> cfg.clusterColor;
+		};
 	}
 	
 	public void onSound(double x, double y, double z, String id, BaseFinderConfig cfg)
 	{
 		if(!cfg.soundMarkers || id == null) return;
+		if(MC.player != null)
+		{
+			double dx = x - MC.player.getX();
+			double dy = y - MC.player.getY();
+			double dz = z - MC.player.getZ();
+			if(dx * dx + dy * dy + dz * dz < 12.0)
+				return;
+		}
 		String s = id.toLowerCase(Locale.ROOT);
-		if(!(s.contains("dig") || s.contains("step") || s.contains("chest")
-			|| s.contains("shulker") || s.contains("barrel") || s.contains("piston")
-			|| s.contains("fire") || s.contains("furnace") || s.contains("anvil")))
+		if(s.contains("entity.") && !s.contains("entity.player"))
 			return;
-		if(y > 80 && !s.contains("chest")) return;
-		long key = (Math.round(x) << 32) ^ (Math.round(y) << 16) ^ Math.round(z);
-		sounds.put(key, new Hit(new Vec3(x, y, z), "snd", cfg.soundColor));
+		if(s.contains(".step") && !s.contains("entity.player"))
+			return;
+		boolean ok = s.contains("entity.player")
+			|| s.contains("chest") || s.contains("shulker") || s.contains("barrel")
+			|| s.contains("piston") || s.contains("furnace") || s.contains("anvil")
+			|| (s.contains("block.") && (s.contains("break") || s.contains("place")));
+		if(!ok) return;
+		if(y > 80 && !(s.contains("chest") || s.contains("shulker"))) return;
+		long key = (Math.round(x * 2) << 32) ^ (Math.round(y * 2) << 16) ^ Math.round(z * 2);
+		String label = s.contains("entity.player") ? "~p" : "~blk";
+		sounds.put(key, new Hit(new Vec3(x, y, z), label, cfg.soundColor));
+	}
+	
+	public synchronized void rememberStash(Cluster cl, BaseFinderConfig cfg)
+	{
+		for(Cluster s : stashes)
+		{
+			double dx = s.x - cl.x, dy = s.y - cl.y, dz = s.z - cl.z;
+			if(dx * dx + dy * dy + dz * dz < 64)
+			{
+				if(cl.count > s.count || cl.spawners > s.spawners)
+				{
+					s.x = cl.x; s.y = cl.y; s.z = cl.z;
+					s.count = cl.count; s.shulkers = cl.shulkers;
+					s.chests = cl.chests; s.spawners = cl.spawners;
+				}
+				return;
+			}
+		}
+		Cluster copy = new Cluster();
+		copy.x = cl.x; copy.y = cl.y; copy.z = cl.z;
+		copy.count = cl.count; copy.shulkers = cl.shulkers;
+		copy.chests = cl.chests; copy.spawners = cl.spawners;
+		stashes.add(copy);
+		while(stashes.size() > cfg.stashMax)
+			stashes.remove(0);
 	}
 	
 	public synchronized ArrayList<Hit> lights() { return new ArrayList<>(lights); }
 	public synchronized ArrayList<Cluster> clusters() { return new ArrayList<>(clusters); }
+	public synchronized ArrayList<Cluster> stashes() { return new ArrayList<>(stashes); }
+	public synchronized ArrayList<Target> targets() { return new ArrayList<>(targets); }
 	public ArrayList<Hit> soundHits() { return new ArrayList<>(sounds.values()); }
 	
 	public synchronized void clear()
 	{
 		lights.clear();
 		clusters.clear();
+		targets.clear();
 		sounds.clear();
 	}
 	
 	public String hudLine()
 	{
-		return "Base  L:" + lights.size()
+		return "Base  T:" + targets.size()
 			+ "  C:" + clusters.size()
+			+ "  stash:" + stashes.size()
+			+ "  L:" + lights.size()
 			+ "  S:" + sounds.size();
 	}
 }
